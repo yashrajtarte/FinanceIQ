@@ -32,11 +32,13 @@ def fmt_currency(value: float) -> str:
 
 def render_reports():
     st.markdown("# 📊 Reports & Insights")
-    st.markdown("Monthly and yearly summaries, visualisations, and data exports.")
+    st.markdown(
+        "Monthly and yearly summaries, visualisations, and data exports.")
 
     # ── Load example data button ───────────────────────────────────────────
     with st.expander("🧪 Demo / Testing", expanded=False):
-        st.markdown("Load a pre-built example dataset to explore all features instantly.")
+        st.markdown(
+            "Load a pre-built example dataset to explore all features instantly.")
         if st.button("🚀 Load Example Dataset"):
             seed_example_data()
             st.success("✅ Example data loaded! Explore all pages now.")
@@ -45,21 +47,23 @@ def render_reports():
     st.markdown("---")
 
     # ── Pull all data ──────────────────────────────────────────────────────
-    assets_df      = get_assets()
+    assets_df = get_assets()
     liabilities_df = get_liabilities()
-    goals_df       = get_goals()
-    snapshots_df   = get_snapshots()
+    goals_df = get_goals()
+    snapshots_df = get_snapshots()
 
-    total_assets      = assets_df["amount"].sum()      if not assets_df.empty      else 0.0
-    total_liabilities = liabilities_df["amount"].sum() if not liabilities_df.empty else 0.0
-    net_worth         = total_assets - total_liabilities
+    total_assets = assets_df["amount"].sum() if not assets_df.empty else 0.0
+    total_liabilities = liabilities_df["amount"].sum(
+    ) if not liabilities_df.empty else 0.0
+    net_worth = total_assets - total_liabilities
 
     # ── Top KPIs ───────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total Assets",      fmt_currency(total_assets))
     c2.metric("Total Liabilities", fmt_currency(total_liabilities))
     c3.metric("Net Worth",         fmt_currency(net_worth))
-    c4.metric("Active Goals",      str(len(goals_df)) if not goals_df.empty else "0")
+    c4.metric("Active Goals",      str(len(goals_df))
+              if not goals_df.empty else "0")
 
     st.markdown("---")
 
@@ -110,15 +114,19 @@ def render_reports():
         # ── Monthly change table ───────────────────────────────────────────
         st.markdown("### 📋 Monthly Summary")
         snap_monthly = snapshots_df.copy()
-        snap_monthly["month"] = snap_monthly["snap_date"].dt.to_period("M").astype(str)
+        snap_monthly["month"] = snap_monthly["snap_date"].dt.to_period(
+            "M").astype(str)
         snap_monthly["nw_change"] = snap_monthly["net_worth"].diff().fillna(0)
         snap_monthly["nw_change_pct"] = (
             snap_monthly["net_worth"].pct_change().fillna(0) * 100
         ).round(2)
 
-        display_cols = snap_monthly[["month", "total_assets", "total_liabilities", "net_worth", "nw_change", "nw_change_pct"]].copy()
-        display_cols.columns = ["Month", "Assets (₹)", "Liabilities (₹)", "Net Worth (₹)", "Change (₹)", "Change (%)"]
-        display_cols = display_cols.sort_values("Month", ascending=False).reset_index(drop=True)
+        display_cols = snap_monthly[["snap_name", "month", "total_assets",
+                                     "total_liabilities", "net_worth", "nw_change", "nw_change_pct"]].copy()
+        display_cols.columns = ["Snapshot Name", "Month",
+                                "Assets (₹)", "Liabilities (₹)", "Net Worth (₹)", "Change (₹)", "Change (%)"]
+        display_cols = display_cols.sort_values(
+            "Month", ascending=False).reset_index(drop=True)
 
         # Format numeric columns
         for col in ["Assets (₹)", "Liabilities (₹)", "Net Worth (₹)", "Change (₹)"]:
@@ -127,7 +135,8 @@ def render_reports():
         st.dataframe(display_cols, use_container_width=True)
 
     else:
-        st.info("No snapshot history yet. Save snapshots from the Net Worth page to see trends here.")
+        st.info(
+            "No snapshot history yet. Save snapshots from the Net Worth page to see trends here.")
 
     st.markdown("---")
 
@@ -138,13 +147,15 @@ def render_reports():
     with col_a:
         st.markdown("**Assets by Category**")
         if not assets_df.empty:
-            cat_assets = assets_df.groupby("category")["amount"].sum().reset_index()
+            cat_assets = assets_df.groupby(
+                "category")["amount"].sum().reset_index()
             fig_a = px.pie(
                 cat_assets,
                 values="amount",
                 names="category",
                 hole=0.4,
-                color_discrete_sequence=["#1e40af", "#3b82f6", "#93c5fd", "#bfdbfe"],
+                color_discrete_sequence=["#1e40af",
+                                         "#3b82f6", "#93c5fd", "#bfdbfe"],
             )
             fig_a.update_layout(
                 height=280,
@@ -160,13 +171,15 @@ def render_reports():
     with col_b:
         st.markdown("**Liabilities by Category**")
         if not liabilities_df.empty:
-            cat_liab = liabilities_df.groupby("category")["amount"].sum().reset_index()
+            cat_liab = liabilities_df.groupby(
+                "category")["amount"].sum().reset_index()
             fig_l = px.pie(
                 cat_liab,
                 values="amount",
                 names="category",
                 hole=0.4,
-                color_discrete_sequence=["#991b1b", "#ef4444", "#fca5a5", "#fee2e2"],
+                color_discrete_sequence=["#991b1b",
+                                         "#ef4444", "#fca5a5", "#fee2e2"],
             )
             fig_l.update_layout(
                 height=280,
@@ -185,18 +198,22 @@ def render_reports():
     if not goals_df.empty:
         goals_display = goals_df.copy()
         goals_display["Progress (%)"] = (
-            (goals_display["current_saved"] / goals_display["target_amount"] * 100)
+            (goals_display["current_saved"] /
+             goals_display["target_amount"] * 100)
             .clip(0, 100)
             .round(1)
         )
         goals_display["Remaining (₹)"] = (
             goals_display["target_amount"] - goals_display["current_saved"]
         ).clip(lower=0).apply(fmt_currency)
-        goals_display["Target (₹)"]  = goals_display["target_amount"].apply(fmt_currency)
-        goals_display["Saved (₹)"]   = goals_display["current_saved"].apply(fmt_currency)
+        goals_display["Target (₹)"] = goals_display["target_amount"].apply(
+            fmt_currency)
+        goals_display["Saved (₹)"] = goals_display["current_saved"].apply(
+            fmt_currency)
 
         st.dataframe(
-            goals_display[["goal_name", "priority", "Target (₹)", "Saved (₹)", "Remaining (₹)", "Progress (%)", "target_year"]]
+            goals_display[["goal_name", "priority",
+                           "Target (₹)", "Saved (₹)", "Remaining (₹)", "Progress (%)", "target_year"]]
             .rename(columns={"goal_name": "Goal", "priority": "Priority", "target_year": "Target Year"}),
             use_container_width=True,
         )
@@ -208,7 +225,8 @@ def render_reports():
             y="goal_name",
             orientation="h",
             color="priority",
-            color_discrete_map={"high": "#ef4444", "medium": "#f59e0b", "low": "#10b981"},
+            color_discrete_map={"high": "#ef4444",
+                                "medium": "#f59e0b", "low": "#10b981"},
             labels={"goal_name": "Goal", "Progress (%)": "% Funded"},
             range_x=[0, 100],
         )
@@ -228,7 +246,7 @@ def render_reports():
     st.markdown("### 💡 Financial Health Score")
 
     score = 0
-    tips  = []
+    tips = []
 
     # Debt-to-asset ratio
     if total_assets > 0:
@@ -237,12 +255,15 @@ def render_reports():
             score += 30
         elif dta < 0.5:
             score += 20
-            tips.append("⚠️ Your debt-to-asset ratio is moderate. Try to pay down liabilities.")
+            tips.append(
+                "⚠️ Your debt-to-asset ratio is moderate. Try to pay down liabilities.")
         else:
             score += 5
-            tips.append("🔴 High debt-to-asset ratio. Focus on reducing liabilities.")
+            tips.append(
+                "🔴 High debt-to-asset ratio. Focus on reducing liabilities.")
     else:
-        tips.append("🔴 No assets recorded — add your assets to get a health score.")
+        tips.append(
+            "🔴 No assets recorded — add your assets to get a health score.")
 
     # Net worth positive
     if net_worth > 0:
@@ -252,26 +273,31 @@ def render_reports():
 
     # Savings / goals coverage
     if not goals_df.empty:
-        avg_progress = (goals_df["current_saved"] / goals_df["target_amount"]).mean() * 100
+        avg_progress = (goals_df["current_saved"] /
+                        goals_df["target_amount"]).mean() * 100
         if avg_progress >= 50:
             score += 25
         elif avg_progress >= 25:
             score += 15
-            tips.append("⚠️ Your goals are partially funded. Increase monthly contributions.")
+            tips.append(
+                "⚠️ Your goals are partially funded. Increase monthly contributions.")
         else:
             score += 5
             tips.append("🔴 Goals are underfunded. Set up automatic savings.")
     else:
-        tips.append("⚠️ No financial goals set. Define goals to track progress.")
+        tips.append(
+            "⚠️ No financial goals set. Define goals to track progress.")
 
     # Snapshot history (engagement)
     if len(snapshots_df) >= 6:
         score += 20
     elif len(snapshots_df) >= 3:
         score += 10
-        tips.append("💡 Save snapshots monthly to track your progress accurately.")
+        tips.append(
+            "💡 Save snapshots monthly to track your progress accurately.")
     else:
-        tips.append("💡 Save regular net worth snapshots to track your financial journey.")
+        tips.append(
+            "💡 Save regular net worth snapshots to track your financial journey.")
 
     score = min(score, 100)
 
@@ -300,7 +326,8 @@ def render_reports():
             for tip in tips:
                 st.markdown(tip)
         else:
-            st.success("🎉 Your finances look great! Keep up the excellent work.")
+            st.success(
+                "🎉 Your finances look great! Keep up the excellent work.")
 
     # ── CSV Export ─────────────────────────────────────────────────────────
     st.markdown("---")

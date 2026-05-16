@@ -185,7 +185,9 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown(
-        "<small style='color:#6060aa'>Built with Streamlit · SQLite · Scikit-learn</small>",
+        "<small style='color:#1D1D36'>© 2026 FinanceIQ. All rights reserved </small>"
+        "<small style='color:#1D1D36'>Contributor:  </small>"
+        "<small style='color:#1D1D36'><b>Yashraj Tarte</b></small>",
         unsafe_allow_html=True,
     )
 
