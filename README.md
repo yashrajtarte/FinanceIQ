@@ -1,0 +1,2 @@
+# FinanceIQ
+Personal Finance Manager
