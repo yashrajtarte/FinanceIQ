@@ -32,11 +32,13 @@ def fmt_currency(value: float) -> str:
 
 def render_reports():
     st.markdown("# 📊 Reports & Insights")
-    st.markdown("Monthly and yearly summaries, visualisations, and data exports.")
+    st.markdown(
+        "Monthly and yearly summaries, visualisations, and data exports.")
 
     # ── Load example data button ───────────────────────────────────────────
     with st.expander("🧪 Demo / Testing", expanded=False):
-        st.markdown("Load a pre-built example dataset to explore all features instantly.")
+        st.markdown(
+            "Load a pre-built example dataset to explore all features instantly.")
         if st.button("🚀 Load Example Dataset"):
             seed_example_data()
             st.success("✅ Example data loaded! Explore all pages now.")
@@ -45,21 +47,23 @@ def render_reports():
     st.markdown("---")
 
     # ── Pull all data ──────────────────────────────────────────────────────
-    assets_df      = get_assets()
+    assets_df = get_assets()
     liabilities_df = get_liabilities()
-    goals_df       = get_goals()
-    snapshots_df   = get_snapshots()
+    goals_df = get_goals()
+    snapshots_df = get_snapshots()
 
-    total_assets      = assets_df["amount"].sum()      if not assets_df.empty      else 0.0
-    total_liabilities = liabilities_df["amount"].sum() if not liabilities_df.empty else 0.0
-    net_worth         = total_assets - total_liabilities
+    total_assets = assets_df["amount"].sum() if not assets_df.empty else 0.0
+    total_liabilities = liabilities_df["amount"].sum(
+    ) if not liabilities_df.empty else 0.0
+    net_worth = total_assets - total_liabilities
 
     # ── Top KPIs ───────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total Assets",      fmt_currency(total_assets))
     c2.metric("Total Liabilities", fmt_currency(total_liabilities))
     c3.metric("Net Worth",         fmt_currency(net_worth))
-    c4.metric("Active Goals",      str(len(goals_df)) if not goals_df.empty else "0")
+    c4.metric("Active Goals",      str(len(goals_df))
+              if not goals_df.empty else "0")
 
     st.markdown("---")
 
@@ -110,15 +114,19 @@ def render_reports():
         # ── Monthly change table ───────────────────────────────────────────
         st.markdown("### 📋 Monthly Summary")
         snap_monthly = snapshots_df.copy()
-        snap_monthly["month"] = snap_monthly["snap_date"].dt.to_period("M").astype(str)
+        snap_monthly["month"] = snap_monthly["snap_date"].dt.to_period(
+            "M").astype(str)
         snap_monthly["nw_change"] = snap_monthly["net_worth"].diff().fillna(0)
         snap_monthly["nw_change_pct"] = (
             snap_monthly["net_worth"].pct_change().fillna(0) * 100
         ).round(2)
 
-        display_cols = snap_monthly[["month", "total_assets", "total_liabilities", "net_worth", "nw_change", "nw_change_pct"]].copy()
-        display_cols.columns = ["Month", "Assets (₹)", "Liabilities (₹)", "Net Worth (₹)", "Change (₹)", "Change (%)"]
-        display_cols = display_cols.sort_values("Month", ascending=False).reset_index(drop=True)
+        display_cols = snap_monthly[["snap_name", "month", "total_assets",
+                                     "total_liabilities", "net_worth", "nw_change", "nw_change_pct"]].copy()
+        display_cols.columns = ["Snapshot Name", "Month",
+                                "Assets (₹)", "Liabilities (₹)", "Net Worth (₹)", "Change (₹)", "Change (%)"]
+        display_cols = display_cols.sort_values(
+            "Month", ascending=False).reset_index(drop=True)
 
         # Format numeric columns
         for col in ["Assets (₹)", "Liabilities (₹)", "Net Worth (₹)", "Change (₹)"]:
@@ -127,7 +135,8 @@ def render_reports():
         st.dataframe(display_cols, use_container_width=True)
 
     else:
-        st.info("No snapshot history yet. Save snapshots from the Net Worth page to see trends here.")
+        st.info(
+            "No snapshot history yet. Save snapshots from the Net Worth page to see trends here.")
 
     st.markdown("---")
 
@@ -138,13 +147,15 @@ def render_reports():
     with col_a:
         st.markdown("**Assets by Category**")
         if not assets_df.empty:
-            cat_assets = assets_df.groupby("category")["amount"].sum().reset_index()
+            cat_assets = assets_df.groupby(
+                "category")["amount"].sum().reset_index()
             fig_a = px.pie(
                 cat_assets,
                 values="amount",
                 names="category",
                 hole=0.4,
-                color_discrete_sequence=["#1e40af", "#3b82f6", "#93c5fd", "#bfdbfe"],
+                color_discrete_sequence=["#1e40af",
+                                         "#3b82f6", "#93c5fd", "#bfdbfe"],
             )
             fig_a.update_layout(
                 height=280,
@@ -160,13 +171,15 @@ def render_reports():
     with col_b:
         st.markdown("**Liabilities by Category**")
         if not liabilities_df.empty:
-            cat_liab = liabilities_df.groupby("category")["amount"].sum().reset_index()
+            cat_liab = liabilities_df.groupby(
+                "category")["amount"].sum().reset_index()
             fig_l = px.pie(
                 cat_liab,
                 values="amount",
                 names="category",
                 hole=0.4,
-                color_discrete_sequence=["#991b1b", "#ef4444", "#fca5a5", "#fee2e2"],
+                color_discrete_sequence=["#991b1b",
+                                         "#ef4444", "#fca5a5", "#fee2e2"],
             )
             fig_l.update_layout(
                 height=280,
@@ -185,18 +198,22 @@ def render_reports():
     if not goals_df.empty:
         goals_display = goals_df.copy()
         goals_display["Progress (%)"] = (
-            (goals_display["current_saved"] / goals_display["target_amount"] * 100)
+            (goals_display["current_saved"] /
+             goals_display["target_amount"] * 100)
             .clip(0, 100)
             .round(1)
         )
         goals_display["Remaining (₹)"] = (
             goals_display["target_amount"] - goals_display["current_saved"]
         ).clip(lower=0).apply(fmt_currency)
-        goals_display["Target (₹)"]  = goals_display["target_amount"].apply(fmt_currency)
-        goals_display["Saved (₹)"]   = goals_display["current_saved"].apply(fmt_currency)
+        goals_display["Target (₹)"] = goals_display["target_amount"].apply(
+            fmt_currency)
+        goals_display["Saved (₹)"] = goals_display["current_saved"].apply(
+            fmt_currency)
 
         st.dataframe(
-            goals_display[["goal_name", "priority", "Target (₹)", "Saved (₹)", "Remaining (₹)", "Progress (%)", "target_year"]]
+            goals_display[["goal_name", "priority",
+                           "Target (₹)", "Saved (₹)", "Remaining (₹)", "Progress (%)", "target_year"]]
             .rename(columns={"goal_name": "Goal", "priority": "Priority", "target_year": "Target Year"}),
             use_container_width=True,
         )
@@ -208,7 +225,8 @@ def render_reports():
             y="goal_name",
             orientation="h",
             color="priority",
-            color_discrete_map={"high": "#ef4444", "medium": "#f59e0b", "low": "#10b981"},
+            color_discrete_map={"high": "#ef4444",
+                                "medium": "#f59e0b", "low": "#10b981"},
             labels={"goal_name": "Goal", "Progress (%)": "% Funded"},
             range_x=[0, 100],
         )
@@ -226,81 +244,238 @@ def render_reports():
     # ── Financial health score ─────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### 💡 Financial Health Score")
+    st.caption(
+        "Your score is calculated across 5 pillars. Each pillar shows exactly what to do to max it out.")
 
-    score = 0
-    tips  = []
+    # ── Scoring engine ─────────────────────────────────────────────────────
+    # Each pillar: (label, icon, earned, max, status, what_to_do)
+    pillars = []
 
-    # Debt-to-asset ratio
+    # 1. Debt Control (25 pts)
     if total_assets > 0:
         dta = total_liabilities / total_assets
-        if dta < 0.3:
-            score += 30
-        elif dta < 0.5:
-            score += 20
-            tips.append("⚠️ Your debt-to-asset ratio is moderate. Try to pay down liabilities.")
+        if dta < 0.2:
+            d_earned, d_status = 25, "perfect"
+            d_action = "✅ Excellent! Debt-to-asset ratio below 20% — keep it up."
+        elif dta < 0.4:
+            d_earned, d_status = 18, "good"
+            d_action = f"📌 Ratio is {dta*100:.0f}%. Pay down liabilities to get below 20% and earn full 25 pts."
+        elif dta < 0.6:
+            d_earned, d_status = 10, "fair"
+            d_action = f"⚠️ Ratio is {dta*100:.0f}%. Focus extra payments on high-interest debt first."
         else:
-            score += 5
-            tips.append("🔴 High debt-to-asset ratio. Focus on reducing liabilities.")
+            d_earned, d_status = 3, "poor"
+            d_action = f"🔴 Ratio is {dta*100:.0f}%! Prioritise debt repayment over new investments."
     else:
-        tips.append("🔴 No assets recorded — add your assets to get a health score.")
+        d_earned, d_status = 0, "poor"
+        d_action = "🔴 Add your assets to unlock this pillar."
+    pillars.append(("Debt Control", "🏦", d_earned, 25, d_status, d_action))
 
-    # Net worth positive
-    if net_worth > 0:
-        score += 25
+    # 2. Net Worth (20 pts)
+    if net_worth > 500000:
+        nw_earned, nw_status = 20, "perfect"
+        nw_action = "✅ Strong positive net worth above ₹5L — great foundation!"
+    elif net_worth > 100000:
+        nw_earned, nw_status = 15, "good"
+        nw_action = "📌 Keep growing. Hit ₹5L+ net worth for full 20 pts."
+    elif net_worth > 0:
+        nw_earned, nw_status = 8, "fair"
+        nw_action = f"⚠️ Net worth is ₹{net_worth:,.0f}. Grow assets and pay down debt consistently."
     else:
-        tips.append("🔴 Your net worth is negative. Focus on reducing debt.")
+        nw_earned, nw_status = 0, "poor"
+        nw_action = "🔴 Net worth is negative. Stop taking on new debt and build assets."
+    pillars.append(("Net Worth", "📈", nw_earned, 20, nw_status, nw_action))
 
-    # Savings / goals coverage
+    # 3. Goal Funding (20 pts)
     if not goals_df.empty:
-        avg_progress = (goals_df["current_saved"] / goals_df["target_amount"]).mean() * 100
-        if avg_progress >= 50:
-            score += 25
-        elif avg_progress >= 25:
-            score += 15
-            tips.append("⚠️ Your goals are partially funded. Increase monthly contributions.")
+        avg_prog = (goals_df["current_saved"] /
+                    goals_df["target_amount"]).clip(0, 1).mean() * 100
+        high_goals = goals_df[goals_df["priority"] == "high"]
+        high_funded = (high_goals["current_saved"] / high_goals["target_amount"]).clip(
+            0, 1).mean() * 100 if not high_goals.empty else avg_prog
+        if avg_prog >= 60 and high_funded >= 50:
+            g_earned, g_status = 20, "perfect"
+            g_action = "✅ Goals well-funded across the board!"
+        elif avg_prog >= 35:
+            g_earned, g_status = 13, "good"
+            g_action = f"📌 Avg goal progress {avg_prog:.0f}%. Automate monthly SIPs to reach 60%+ for full pts."
+        elif avg_prog >= 15:
+            g_earned, g_status = 7, "fair"
+            g_action = f"⚠️ Only {avg_prog:.0f}% avg. Set up standing instructions for each goal."
         else:
-            score += 5
-            tips.append("🔴 Goals are underfunded. Set up automatic savings.")
+            g_earned, g_status = 2, "poor"
+            g_action = "🔴 Goals barely started. Even ₹1,000/month per goal compounds significantly."
     else:
-        tips.append("⚠️ No financial goals set. Define goals to track progress.")
+        g_earned, g_status = 0, "poor"
+        g_action = "🔴 No goals set. Go to the Roadmap page and add at least 3 goals."
+    pillars.append(("Goal Funding", "🎯", g_earned, 20, g_status, g_action))
 
-    # Snapshot history (engagement)
-    if len(snapshots_df) >= 6:
-        score += 20
-    elif len(snapshots_df) >= 3:
-        score += 10
-        tips.append("💡 Save snapshots monthly to track your progress accurately.")
+    # 4. Diversification (20 pts)
+    if not assets_df.empty:
+        cats = assets_df["category"].nunique()
+        has_invest = "Investments" in assets_df["category"].values
+        has_cash = "Cash" in assets_df["category"].values
+        has_prop = "Property" in assets_df["category"].values
+        invest_pct = assets_df[assets_df["category"] == "Investments"]["amount"].sum(
+        ) / total_assets * 100 if total_assets > 0 else 0
+        if cats >= 3 and has_invest and invest_pct >= 20:
+            dv_earned, dv_status = 20, "perfect"
+            dv_action = "✅ Well-diversified portfolio across multiple asset classes!"
+        elif cats >= 2 and has_invest:
+            dv_earned, dv_status = 13, "good"
+            dv_action = f"📌 {cats} categories. Add Property/Real-estate or Gold to diversify further."
+        elif cats >= 2:
+            dv_earned, dv_status = 8, "fair"
+            dv_action = "⚠️ Add investment assets (mutual funds, stocks, ETFs) to earn full pts."
+        else:
+            dv_earned, dv_status = 3, "poor"
+            dv_action = "🔴 All eggs in one basket! Spread across Cash, Investments, and Property."
     else:
-        tips.append("💡 Save regular net worth snapshots to track your financial journey.")
+        dv_earned, dv_status = 0, "poor"
+        dv_action = "🔴 Add assets to assess diversification."
+    pillars.append(("Diversification", "🌐", dv_earned,
+                   20, dv_status, dv_action))
 
-    score = min(score, 100)
+    # 5. Tracking Consistency (15 pts)
+    snap_count = len(snapshots_df)
+    if snap_count >= 12:
+        t_earned, t_status = 15, "perfect"
+        t_action = "✅ Excellent tracking discipline — 12+ snapshots saved!"
+    elif snap_count >= 6:
+        t_earned, t_status = 10, "good"
+        t_action = f"📌 {snap_count} snapshots saved. Save monthly to hit 12 for full 15 pts."
+    elif snap_count >= 3:
+        t_earned, t_status = 6, "fair"
+        t_action = f"⚠️ Only {snap_count} snapshots. Save a snapshot after every major financial event."
+    else:
+        t_earned, t_status = 1, "poor"
+        t_action = "🔴 Barely any history. Save a net worth snapshot today — it takes 10 seconds!"
+    pillars.append(("Tracking", "📊", t_earned, 15, t_status, t_action))
 
-    # Display score
-    score_color = "#10b981" if score >= 70 else "#f59e0b" if score >= 40 else "#ef4444"
-    score_label = "Excellent 🌟" if score >= 80 else "Good 👍" if score >= 60 else "Fair ⚡" if score >= 40 else "Needs Work 🔧"
+    # Total score
+    score = sum(p[2] for p in pillars)
+    max_score = sum(p[3] for p in pillars)  # = 100
+    score_color = "#10b981" if score >= 75 else "#f59e0b" if score >= 45 else "#ef4444"
+    score_label = "Excellent 🌟" if score >= 85 else "Good 👍" if score >= 65 else "Fair ⚡" if score >= 45 else "Needs Work 🔧"
 
-    col_s1, col_s2 = st.columns([1, 2])
-    with col_s1:
+    # ── Score display ──────────────────────────────────────────────────────
+    sc1, sc2 = st.columns([1, 2])
+
+    with sc1:
         st.markdown(
-            f"""
-            <div style="text-align:center;padding:1.5rem;background:white;border-radius:20px;
-                        border:2px solid {score_color};box-shadow:0 4px 20px rgba(0,0,0,0.08)">
-                <div style="font-size:3.5rem;font-weight:800;color:{score_color};
-                            font-family:'Syne',sans-serif">{score}</div>
-                <div style="font-size:0.85rem;color:#6b7280;text-transform:uppercase;
-                            letter-spacing:0.08em">out of 100</div>
-                <div style="font-size:1.1rem;font-weight:600;color:{score_color};
-                            margin-top:0.5rem">{score_label}</div>
-            </div>
-            """,
+            f"<div style='text-align:center;padding:1.8rem 1rem;border-radius:20px;"
+            f"border:2px solid {score_color};'>"
+            f"<div style='font-size:3.8rem;font-weight:800;color:{score_color};'>{score}</div>"
+            f"<div style='font-size:0.78rem;color:#6b7280;text-transform:uppercase;"
+            f"letter-spacing:0.1em;margin-bottom:0.4rem;'>out of 100</div>"
+            f"<div style='font-size:1.05rem;font-weight:700;color:{score_color};'>{score_label}</div>"
+            f"</div>",
             unsafe_allow_html=True,
         )
-    with col_s2:
-        if tips:
-            for tip in tips:
-                st.markdown(tip)
+        st.markdown("")
+
+        # Mini radar / bar chart of pillars
+        import plotly.graph_objects as _pgo
+        fig_radar = _pgo.Figure()
+        pillar_names = [p[0] for p in pillars]
+        pillar_earned = [p[2] for p in pillars]
+        pillar_max = [p[3] for p in pillars]
+        pillar_pct = [e/m*100 for e, m in zip(pillar_earned, pillar_max)]
+
+        fig_radar.add_trace(_pgo.Bar(
+            x=pillar_pct,
+            y=pillar_names,
+            orientation="h",
+            marker=dict(
+                color=["#10b981" if v >= 75 else "#f59e0b" if v >=
+                       45 else "#ef4444" for v in pillar_pct],
+                cornerradius=6,
+            ),
+            text=[f"{e}/{m}" for e, m in zip(pillar_earned, pillar_max)],
+            textposition="inside",
+            insidetextanchor="middle",
+        ))
+        fig_radar.update_layout(
+            height=220,
+            margin=dict(t=5, b=5, l=5, r=5),
+            xaxis=dict(range=[0, 100], showticklabels=False, showgrid=False),
+            yaxis=dict(showgrid=False),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False,
+        )
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+    with sc2:
+        st.markdown("#### 🗺️ Your Roadmap to 100")
+        st.caption("Here's exactly what to fix, pillar by pillar:")
+
+        status_colors = {"perfect": "#10b981", "good": "#3b82f6",
+                         "fair": "#f59e0b", "poor": "#ef4444"}
+        status_labels = {"perfect": "MAX",
+                         "good": "GOOD", "fair": "FAIR", "poor": "LOW"}
+
+        for label, icon, earned, maximum, status, action in pillars:
+            pct = earned / maximum * 100
+            bar_color = status_colors[status]
+            badge = status_labels[status]
+
+            st.markdown(
+                f"<div style='margin-bottom:0.9rem;padding:0.8rem 1rem;border-radius:12px;"
+                f"border:1px solid #2a2a4a;background:#13132a;'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;'>"
+                f"<span style='font-weight:700;font-size:0.92rem;color:#e0e0ff;'>{icon} {label}</span>"
+                f"<span style='font-size:0.72rem;font-weight:700;padding:0.15rem 0.6rem;"
+                f"border-radius:20px;background:{bar_color}22;color:{bar_color};'>"
+                f"{earned}/{maximum} pts · {badge}</span>"
+                f"</div>"
+                f"<div style='background:#2a2a4a;border-radius:6px;height:6px;margin-bottom:0.5rem;'>"
+                f"<div style='background:{bar_color};width:{pct:.0f}%;height:6px;border-radius:6px;'></div>"
+                f"</div>"
+                f"<div style='font-size:0.82rem;color:#a0a0cc;'>{action}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        # Perfect score checklist
+        missing = sum(1 for p in pillars if p[4] != "perfect")
+        if missing == 0:
+            st.success("🎉 Perfect score! You're a financial role model.")
         else:
-            st.success("🎉 Your finances look great! Keep up the excellent work.")
+            st.info(
+                f"💪 Fix **{missing} pillar{'s' if missing>1 else ''}** above to reach 100. You're {100-score} points away!")
+
+    # ── Quick Tips ─────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🚀 Quick Wins — Do These Today")
+    q1, q2, q3 = st.columns(3)
+    with q1:
+        st.markdown(
+            "<div style='padding:1rem;border-radius:12px;border:1px solid #1e3a5f;background:#0d1f35;'>"
+            "<div style='font-size:1.4rem;margin-bottom:0.4rem;'>⚡</div>"
+            "<div style='font-weight:700;color:#60a5fa;margin-bottom:0.3rem;'>5-Minute Win</div>"
+            "<div style='font-size:0.83rem;color:#94a3b8;'>Save today's net worth snapshot. "
+            "One click → historical data starts building immediately.</div></div>",
+            unsafe_allow_html=True,
+        )
+    with q2:
+        st.markdown(
+            "<div style='padding:1rem;border-radius:12px;border:1px solid #1e3a2a;background:#0d1f18;'>"
+            "<div style='font-size:1.4rem;margin-bottom:0.4rem;'>🎯</div>"
+            "<div style='font-weight:700;color:#34d399;margin-bottom:0.3rem;'>This Week</div>"
+            "<div style='font-size:0.83rem;color:#94a3b8;'>Set up an auto-SIP for your top priority goal. "
+            "Even ₹500/month invested for 20 years = significant wealth.</div></div>",
+            unsafe_allow_html=True,
+        )
+    with q3:
+        st.markdown(
+            "<div style='padding:1rem;border-radius:12px;border:1px solid #3a1e2a;background:#1f0d18;'>"
+            "<div style='font-size:1.4rem;margin-bottom:0.4rem;'>📅</div>"
+            "<div style='font-weight:700;color:#f472b6;margin-bottom:0.3rem;'>This Month</div>"
+            "<div style='font-size:0.83rem;color:#94a3b8;'>Review and pay more than the minimum on "
+            "your highest-interest liability to improve your Debt Control score.</div></div>",
+            unsafe_allow_html=True,
+        )
 
     # ── CSV Export ─────────────────────────────────────────────────────────
     st.markdown("---")
