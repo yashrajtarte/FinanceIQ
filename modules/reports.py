@@ -18,6 +18,8 @@ from modules.database import (
     get_liabilities,
     get_goals,
     get_snapshots,
+    update_snapshot,
+    delete_snapshot,
     seed_example_data,
 )
 
@@ -120,19 +122,103 @@ def render_reports():
         snap_monthly["nw_change_pct"] = (
             snap_monthly["net_worth"].pct_change().fillna(0) * 100
         ).round(2)
+        snap_monthly = snap_monthly.sort_values(
+            "snap_date", ascending=False).reset_index(drop=True)
 
-        display_cols = snap_monthly[["snap_name", "month", "total_assets",
-                                     "total_liabilities", "net_worth", "nw_change", "nw_change_pct"]].copy()
-        display_cols.columns = ["Snapshot Name", "Month",
-                                "Assets (₹)", "Liabilities (₹)", "Net Worth (₹)", "Change (₹)", "Change (%)"]
-        display_cols = display_cols.sort_values(
-            "Month", ascending=False).reset_index(drop=True)
+        # ── Column headers ────────────────────────────────────────────────
+        hc = st.columns([2.5, 1.5, 1.8, 1.8, 1.8, 1.5, 1.2, 0.8, 0.8])
+        for col_h, label in zip(hc, ["Snapshot Name", "Month", "Assets (₹)", "Liabilities (₹)",
+                                     "Net Worth (₹)", "Change (₹)", "Change (%)", "", ""]):
+            col_h.markdown(f"<small style='color:#6060a0;font-weight:700;text-transform:uppercase;"
+                           f"letter-spacing:0.07em;font-size:0.7rem;'>{label}</small>",
+                           unsafe_allow_html=True)
+        st.markdown("<hr style='margin:0.3rem 0 0.5rem 0;border-color:#2a2a4a;'>",
+                    unsafe_allow_html=True)
 
-        # Format numeric columns
-        for col in ["Assets (₹)", "Liabilities (₹)", "Net Worth (₹)", "Change (₹)"]:
-            display_cols[col] = display_cols[col].apply(fmt_currency)
+        # ── Rows ──────────────────────────────────────────────────────────
+        for _, row in snap_monthly.iterrows():
+            rid = int(row["id"])
+            edit_key = f"edit_snap_{rid}"
+            if edit_key not in st.session_state:
+                st.session_state[edit_key] = False
 
-        st.dataframe(display_cols, use_container_width=True)
+            change_color = "#10b981" if row["nw_change"] >= 0 else "#ef4444"
+            change_arrow = "▲" if row["nw_change"] >= 0 else "▼"
+
+            if st.session_state[edit_key]:
+                # ── Edit mode ─────────────────────────────────────────────
+                with st.container():
+                    st.markdown(f"**✏️ Editing:** {row['snap_name']}")
+                    e1, e2, e3, e4 = st.columns([2.5, 1.8, 1.8, 1.8])
+                    new_sname = e1.text_input(
+                        "Snapshot Name", value=row["snap_name"],  key=f"esn_name_{rid}")
+                    new_assets = e2.number_input("Assets (₹)",  value=float(row["total_assets"]),
+                                                 min_value=0.0, step=1000.0, key=f"esn_assets_{rid}")
+                    new_liab = e3.number_input("Liabilities (₹)", value=float(row["total_liabilities"]),
+                                               min_value=0.0, step=1000.0, key=f"esn_liab_{rid}")
+                    new_nw = e4.number_input("Net Worth (₹)", value=float(row["net_worth"]),
+                                             step=1000.0, key=f"esn_nw_{rid}")
+
+                    st.markdown("""
+                        <style>
+                        div[data-testid="stHorizontalBlock"] div:nth-child(1) .stButton > button {
+                            background: linear-gradient(135deg,#16a34a,#15803d) !important;
+                            color:#fff !important; border:none !important;
+                            border-radius:8px !important; font-weight:700 !important;
+                            width:100% !important; white-space:nowrap !important;
+                            padding:0.5rem 0.8rem !important;
+                        }
+                        div[data-testid="stHorizontalBlock"] div:nth-child(2) .stButton > button {
+                            background:transparent !important; color:#f87171 !important;
+                            border:1.5px solid #ef4444 !important; border-radius:8px !important;
+                            font-weight:700 !important; width:100% !important;
+                            white-space:nowrap !important; padding:0.5rem 0.8rem !important;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+
+                    bc1, bc2, _ = st.columns([1.2, 1.2, 5])
+                    with bc1:
+                        if st.button("💾  Save", key=f"save_snap_{rid}", use_container_width=True):
+                            update_snapshot(
+                                rid, new_sname, new_assets, new_liab, new_nw)
+                            st.session_state[edit_key] = False
+                            st.success(f"✅ '{new_sname}' updated!")
+                            st.rerun()
+                    with bc2:
+                        if st.button("✖  Cancel", key=f"cancel_snap_{rid}", use_container_width=True):
+                            st.session_state[edit_key] = False
+                            st.rerun()
+                    st.markdown("<hr style='margin:0.4rem 0;border-color:#2a2a4a;'>",
+                                unsafe_allow_html=True)
+
+            else:
+                # ── View mode ─────────────────────────────────────────────
+                rc = st.columns([2.5, 1.5, 1.8, 1.8, 1.8, 1.5, 1.2, 0.8, 0.8])
+                rc[0].markdown(f"**{row['snap_name']}**")
+                rc[1].markdown(
+                    f"<small>{row['month']}</small>", unsafe_allow_html=True)
+                rc[2].markdown(fmt_currency(row["total_assets"]))
+                rc[3].markdown(fmt_currency(row["total_liabilities"]))
+                rc[4].markdown(fmt_currency(row["net_worth"]))
+                rc[5].markdown(
+                    f"<span style='color:{change_color};font-weight:600;'>"
+                    f"{change_arrow} {fmt_currency(abs(row['nw_change']))}</span>",
+                    unsafe_allow_html=True,
+                )
+                rc[6].markdown(
+                    f"<span style='color:{change_color};font-weight:600;'>"
+                    f"{row['nw_change_pct']:+.1f}%</span>",
+                    unsafe_allow_html=True,
+                )
+                if rc[7].button("✏️", key=f"edit_snap_btn_{rid}", help="Edit snapshot"):
+                    st.session_state[edit_key] = True
+                    st.rerun()
+                if rc[8].button("🗑️", key=f"del_snap_{rid}", help="Delete snapshot"):
+                    delete_snapshot(rid)
+                    st.rerun()
+                st.markdown("<hr style='margin:0.2rem 0;border-color:#1a1a30;'>",
+                            unsafe_allow_html=True)
 
     else:
         st.info(

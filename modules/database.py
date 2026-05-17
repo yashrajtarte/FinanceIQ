@@ -231,6 +231,26 @@ def save_snapshot(snap_name: str, total_assets: float,
     conn.close()
 
 
+def update_snapshot(snapshot_id: int, snap_name: str,
+                    total_assets: float, total_liabilities: float, net_worth: float):
+    conn = get_conn()
+    conn.execute(
+        """UPDATE snapshots
+           SET snap_name=?, total_assets=?, total_liabilities=?, net_worth=?
+           WHERE id=?""",
+        (snap_name.strip(), total_assets, total_liabilities, net_worth, snapshot_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_snapshot(snapshot_id: int):
+    conn = get_conn()
+    conn.execute("DELETE FROM snapshots WHERE id=?", (snapshot_id,))
+    conn.commit()
+    conn.close()
+
+
 def get_snapshots() -> pd.DataFrame:
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM snapshots ORDER BY snap_date", conn)
