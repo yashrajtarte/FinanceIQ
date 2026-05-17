@@ -51,6 +51,7 @@ def init_db():
             goal_name       TEXT NOT NULL,
             target_amount   REAL NOT NULL,
             current_saved   REAL DEFAULT 0,
+            target_month    INTEGER DEFAULT 1,
             target_year     INTEGER,
             priority        TEXT DEFAULT 'medium',
             created_at      TEXT DEFAULT (date('now'))
@@ -164,12 +165,13 @@ def delete_liability(liability_id: int):
 # ── Goals ─────────────────────────────────────────────────────────────────────
 
 def add_goal(goal_name: str, target_amount: float, current_saved: float,
-             target_year: int, priority: str):
+             target_year: int, priority: str, target_month: int = 12):
     conn = get_conn()
     conn.execute(
-        """INSERT INTO goals (goal_name, target_amount, current_saved, target_year, priority)
-           VALUES (?, ?, ?, ?, ?)""",
-        (goal_name, target_amount, current_saved, target_year, priority),
+        """INSERT INTO goals (goal_name, target_amount, current_saved, target_year, target_month, priority)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (goal_name, target_amount, current_saved,
+         target_year, target_month, priority),
     )
     conn.commit()
     conn.close()
@@ -180,6 +182,20 @@ def get_goals() -> pd.DataFrame:
     df = pd.read_sql("SELECT * FROM goals ORDER BY target_year", conn)
     conn.close()
     return df
+
+
+def update_goal(goal_id: int, goal_name: str, target_amount: float,
+                current_saved: float, target_year: int, target_month: int, priority: str):
+    conn = get_conn()
+    conn.execute(
+        """UPDATE goals
+           SET goal_name=?, target_amount=?, current_saved=?, target_year=?, target_month=?, priority=?
+           WHERE id=?""",
+        (goal_name, target_amount, current_saved,
+         target_year, target_month, priority, goal_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def delete_goal(goal_id: int):
@@ -256,11 +272,12 @@ def seed_example_data():
 
     # Goals
     for g in [
-        ("Emergency Fund", 30000, 25000, 2025, "high"),
-        ("Buy a House", 500000, 350000, 2027, "high"),
-        ("Retirement", 1500000, 80000, 2045, "medium"),
-        ("World Travel Fund", 20000, 5000, 2026, "low"),
+        ("Emergency Fund", 30000, 25000, 2025, "high", 6),
+        ("Buy a House", 500000, 350000, 2027, "high", 3),
+        ("Retirement", 1500000, 80000, 2045, "medium", 12),
+        ("World Travel Fund", 20000, 5000, 2026, "low", 9),
     ]:
+        # goal_name, target_amount, current_saved, target_year, priority, target_month
         add_goal(*g)
 
     # Snapshots — seeded with auto sequence names
