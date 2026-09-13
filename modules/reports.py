@@ -11,6 +11,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import date
+from modules.animations import page_enter
 import io
 
 from modules.database import (
@@ -25,6 +26,8 @@ from modules.database import (
 
 
 def fmt_currency(value: float) -> str:
+    if pd.isna(value):
+        return "₹0"
     if abs(value) >= 1_00_00_000:
         return f"₹{value/1_00_00_000:.2f} Cr"
     elif abs(value) >= 1_00_000:
@@ -32,7 +35,77 @@ def fmt_currency(value: float) -> str:
     return f"₹{value:,.0f}"
 
 
+def _safe_pct(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    """Percentage of numerator/denominator, avoiding div-by-zero -> inf/NaN."""
+    denom = denominator.replace(0, np.nan)
+    return (numerator / denom * 100).fillna(0)
+
+
+# ── Adaptive chart theme ────────────────────────────────────────────────────
+# Two separate bugs were causing charts to look wrong:
+#  1. st.plotly_chart() applies Streamlit's own built-in chart theme
+#     ("streamlit") by default, which silently OVERRIDES a figure's own
+#     colors/background — so no matter what plot_bgcolor we set, Streamlit
+#     was re-painting it. Every st.plotly_chart() call below now passes
+#     theme=None to make Streamlit respect the figure's own styling.
+#  2. That styling was previously a hardcoded dark-navy guess, which doesn't
+#     necessarily match the app's actual configured theme. Colors are now
+#     pulled from Streamlit's live theme config (st.get_option) so charts
+#     always match whatever theme (dark or light) the app is running,
+#     instead of a fixed color scheme baked into this file.
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert a '#rrggbb' (or '#rgb') color to an 'rgba(r,g,b,a)' string."""
+    hex_color = (hex_color or "#e6e6e6").lstrip("#")
+    if len(hex_color) == 3:
+        hex_color = "".join(c * 2 for c in hex_color)
+    try:
+        r, g, b = int(hex_color[0:2], 16), int(
+            hex_color[2:4], 16), int(hex_color[4:6], 16)
+    except ValueError:
+        r, g, b = 230, 230, 230
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _apply_chart_theme(fig, legend: bool = True):
+    """Style a plotly figure to match the app's live Streamlit theme.
+
+    Background is left fully transparent (rather than a fixed dark box) so
+    the chart always blends into the page, whatever theme is configured.
+    Text/grid colors are derived from theme.textColor so they stay legible
+    in both dark and light themes automatically.
+    """
+    text_color = st.get_option("theme.textColor") or "#e6e6e6"
+    # Used only for the unified-hover tooltip box below — that box is NOT
+    # part of the plot background, so leaving plot_bgcolor transparent (as
+    # we do) has no effect on it; it still needs an explicit bgcolor or it
+    # renders with Plotly's default white hover style even on a dark chart.
+    hover_bg = st.get_option("theme.secondaryBackgroundColor") or "#1e2130"
+    grid_color = _hex_to_rgba(text_color, 0.14)
+    axis_color = _hex_to_rgba(text_color, 0.65)
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=text_color),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=-0.3,
+            font=dict(color=text_color),
+        ) if legend else dict(),
+        hoverlabel=dict(
+            bgcolor=hover_bg,
+            font=dict(color=text_color),
+            bordercolor=grid_color,
+        ),
+    )
+    fig.update_xaxes(gridcolor=grid_color, zerolinecolor=grid_color,
+                     linecolor=grid_color, color=axis_color)
+    fig.update_yaxes(gridcolor=grid_color, zerolinecolor=grid_color,
+                     linecolor=grid_color, color=axis_color)
+    return fig
+
+
 def render_reports():
+    page_enter("reports")
     st.markdown("# 📊 Reports & Insights")
     st.markdown(
         "Monthly and yearly summaries, visualisations, and data exports.")
@@ -76,42 +149,71 @@ def render_reports():
         snapshots_df = snapshots_df.sort_values("snap_date")
 
         fig_hist = go.Figure()
+        # Assets and Liabilities are drawn *first* (bottom layer) and Net
+        # Worth is drawn *last* (top layer). Previously Net Worth was drawn
+        # first, so whenever its point sat close in value to Total Assets,
+        # the Assets marker (drawn on top) fully covered the Net Worth
+        # marker/line — it looked like Net Worth had vanished from the chart.
+        # Distinct marker symbols are also used so overlapping points stay
+        # visually distinguishable even when values are close.
+        show_markers = "lines+markers" if len(snapshots_df) <= 6 else "lines"
+        fig_hist.add_trace(go.Scatter(
+            x=snapshots_df["snap_date"],
+            y=snapshots_df["total_assets"],
+            mode=show_markers,
+            name="Total Assets",
+            line=dict(color="#10b981", width=2, dash="dash"),
+            marker=dict(size=7, symbol="square"),
+            hovertemplate="%{x|%b %d, %Y}<br>Assets: ₹%{y:,.0f}<extra></extra>",
+        ))
+        fig_hist.add_trace(go.Scatter(
+            x=snapshots_df["snap_date"],
+            y=snapshots_df["total_liabilities"],
+            mode=show_markers,
+            name="Total Liabilities",
+            line=dict(color="#ef4444", width=2, dash="dot"),
+            marker=dict(size=7, symbol="triangle-up"),
+            hovertemplate="%{x|%b %d, %Y}<br>Liabilities: ₹%{y:,.0f}<extra></extra>",
+        ))
         fig_hist.add_trace(go.Scatter(
             x=snapshots_df["snap_date"],
             y=snapshots_df["net_worth"],
             mode="lines+markers",
             name="Net Worth",
-            line=dict(color="#2563eb", width=3),
-            marker=dict(size=7),
+            line=dict(color="#60a5fa", width=3),
+            marker=dict(size=9, symbol="circle", line=dict(
+                width=1.5, color="#e8f0ff")),
             fill="tozeroy",
-            fillcolor="rgba(37,99,235,0.08)",
-        ))
-        fig_hist.add_trace(go.Scatter(
-            x=snapshots_df["snap_date"],
-            y=snapshots_df["total_assets"],
-            mode="lines",
-            name="Total Assets",
-            line=dict(color="#10b981", width=2, dash="dash"),
-        ))
-        fig_hist.add_trace(go.Scatter(
-            x=snapshots_df["snap_date"],
-            y=snapshots_df["total_liabilities"],
-            mode="lines",
-            name="Total Liabilities",
-            line=dict(color="#ef4444", width=2, dash="dot"),
+            fillcolor="rgba(96,165,250,0.12)",
+            hovertemplate="%{x|%b %d, %Y}<br>Net Worth: ₹%{y:,.0f}<extra></extra>",
         ))
         fig_hist.update_layout(
             height=380,
             margin=dict(t=10, b=40, l=60, r=20),
             xaxis_title="Date",
             yaxis_title="Amount (₹)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(248,248,252,1)",
-            legend=dict(orientation="h", yanchor="bottom", y=-0.3),
             hovermode="x unified",
         )
         fig_hist.update_yaxes(tickformat=",.0f", tickprefix="₹")
-        st.plotly_chart(fig_hist, use_container_width=True)
+        _apply_chart_theme(fig_hist)
+
+        # A single snapshot makes Plotly auto-zoom to a microsecond-wide
+        # range around that one point, producing unreadable sub-second tick
+        # labels. Give the axis a sensible fixed window in that case instead.
+        if len(snapshots_df) == 1:
+            single_date = snapshots_df["snap_date"].iloc[0]
+            fig_hist.update_xaxes(
+                range=[single_date - pd.Timedelta(days=15),
+                       single_date + pd.Timedelta(days=15)],
+                tickformat="%b %d, %Y",
+            )
+        else:
+            fig_hist.update_xaxes(tickformat="%b %d, %Y")
+
+        st.plotly_chart(fig_hist, use_container_width=True, theme=None)
+        if len(snapshots_df) == 1:
+            st.caption(
+                "📌 Only one snapshot saved so far — save more over time to see a real trend line.")
 
         # ── Monthly change table ───────────────────────────────────────────
         st.markdown("### 📋 Monthly Summary")
@@ -120,7 +222,8 @@ def render_reports():
             "M").astype(str)
         snap_monthly["nw_change"] = snap_monthly["net_worth"].diff().fillna(0)
         snap_monthly["nw_change_pct"] = (
-            snap_monthly["net_worth"].pct_change().fillna(0) * 100
+            snap_monthly["net_worth"].pct_change().replace(
+                [np.inf, -np.inf], np.nan).fillna(0) * 100
         ).round(2)
         snap_monthly = snap_monthly.sort_values(
             "snap_date", ascending=False).reset_index(drop=True)
@@ -147,7 +250,7 @@ def render_reports():
 
             if st.session_state[edit_key]:
                 # ── Edit mode ─────────────────────────────────────────────
-                with st.container():
+                with st.container(border=True):
                     st.markdown(f"**✏️ Editing:** {row['snap_name']}")
                     e1, e2, e3, e4 = st.columns([2.5, 1.8, 1.8, 1.8])
                     new_sname = e1.text_input(
@@ -158,39 +261,26 @@ def render_reports():
                                                min_value=0.0, step=1000.0, key=f"esn_liab_{rid}")
                     new_nw = e4.number_input("Net Worth (₹)", value=float(row["net_worth"]),
                                              step=1000.0, key=f"esn_nw_{rid}")
-
-                    st.markdown("""
-                        <style>
-                        div[data-testid="stHorizontalBlock"] div:nth-child(1) .stButton > button {
-                            background: linear-gradient(135deg,#16a34a,#15803d) !important;
-                            color:#fff !important; border:none !important;
-                            border-radius:8px !important; font-weight:700 !important;
-                            width:100% !important; white-space:nowrap !important;
-                            padding:0.5rem 0.8rem !important;
-                        }
-                        div[data-testid="stHorizontalBlock"] div:nth-child(2) .stButton > button {
-                            background:transparent !important; color:#f87171 !important;
-                            border:1.5px solid #ef4444 !important; border-radius:8px !important;
-                            font-weight:700 !important; width:100% !important;
-                            white-space:nowrap !important; padding:0.5rem 0.8rem !important;
-                        }
-                        </style>
-                    """, unsafe_allow_html=True)
+                    calc_nw = new_assets - new_liab
+                    if abs(calc_nw - new_nw) > 0.01:
+                        e4.caption(
+                            f"⚠️ Assets − Liabilities = {fmt_currency(calc_nw)}, which doesn't match "
+                            f"the Net Worth you entered. Double-check before saving.")
 
                     bc1, bc2, _ = st.columns([1.2, 1.2, 5])
                     with bc1:
-                        if st.button("💾  Save", key=f"save_snap_{rid}", use_container_width=True):
+                        if st.button("💾  Save", key=f"save_snap_{rid}",
+                                     use_container_width=True, type="primary"):
                             update_snapshot(
                                 rid, new_sname, new_assets, new_liab, new_nw)
                             st.session_state[edit_key] = False
                             st.success(f"✅ '{new_sname}' updated!")
                             st.rerun()
                     with bc2:
-                        if st.button("✖  Cancel", key=f"cancel_snap_{rid}", use_container_width=True):
+                        if st.button("✖  Cancel", key=f"cancel_snap_{rid}",
+                                     use_container_width=True, type="secondary"):
                             st.session_state[edit_key] = False
                             st.rerun()
-                    st.markdown("<hr style='margin:0.4rem 0;border-color:#2a2a4a;'>",
-                                unsafe_allow_html=True)
 
             else:
                 # ── View mode ─────────────────────────────────────────────
@@ -243,14 +333,17 @@ def render_reports():
                 color_discrete_sequence=["#1e40af",
                                          "#3b82f6", "#93c5fd", "#bfdbfe"],
             )
+            fig_a.update_traces(
+                textinfo="percent+label",
+                hovertemplate="%{label}<br>₹%{value:,.0f}<extra></extra>",
+            )
             fig_a.update_layout(
                 height=280,
                 margin=dict(t=10, b=10, l=10, r=10),
-                paper_bgcolor="rgba(0,0,0,0)",
                 showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=-0.3),
             )
-            st.plotly_chart(fig_a, use_container_width=True)
+            _apply_chart_theme(fig_a)
+            st.plotly_chart(fig_a, use_container_width=True, theme=None)
         else:
             st.info("No assets recorded.")
 
@@ -267,14 +360,17 @@ def render_reports():
                 color_discrete_sequence=["#991b1b",
                                          "#ef4444", "#fca5a5", "#fee2e2"],
             )
+            fig_l.update_traces(
+                textinfo="percent+label",
+                hovertemplate="%{label}<br>₹%{value:,.0f}<extra></extra>",
+            )
             fig_l.update_layout(
                 height=280,
                 margin=dict(t=10, b=10, l=10, r=10),
-                paper_bgcolor="rgba(0,0,0,0)",
                 showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=-0.3),
             )
-            st.plotly_chart(fig_l, use_container_width=True)
+            _apply_chart_theme(fig_l)
+            st.plotly_chart(fig_l, use_container_width=True, theme=None)
         else:
             st.info("No liabilities recorded.")
 
@@ -283,12 +379,9 @@ def render_reports():
     st.markdown("### 🎯 Goals Summary")
     if not goals_df.empty:
         goals_display = goals_df.copy()
-        goals_display["Progress (%)"] = (
-            (goals_display["current_saved"] /
-             goals_display["target_amount"] * 100)
-            .clip(0, 100)
-            .round(1)
-        )
+        goals_display["Progress (%)"] = _safe_pct(
+            goals_display["current_saved"], goals_display["target_amount"]
+        ).clip(0, 100).round(1)
         goals_display["Remaining (₹)"] = (
             goals_display["target_amount"] - goals_display["current_saved"]
         ).clip(lower=0).apply(fmt_currency)
@@ -302,6 +395,7 @@ def render_reports():
                            "Target (₹)", "Saved (₹)", "Remaining (₹)", "Progress (%)", "target_year"]]
             .rename(columns={"goal_name": "Goal", "priority": "Priority", "target_year": "Target Year"}),
             use_container_width=True,
+            hide_index=True,  # was showing a stray "0, 1, 2…" index column
         )
 
         # Goals progress bar chart
@@ -315,15 +409,24 @@ def render_reports():
                                 "medium": "#f59e0b", "low": "#10b981"},
             labels={"goal_name": "Goal", "Progress (%)": "% Funded"},
             range_x=[0, 100],
+            text="Progress (%)",
+        )
+        fig_goals.update_traces(
+            texttemplate="%{x:.0f}%",
+            textposition="outside",
+            cliponaxis=False,
+            marker=dict(cornerradius=6),
         )
         fig_goals.update_layout(
-            height=max(200, 55 * len(goals_display)),
-            margin=dict(t=10, b=30, l=10, r=10),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(248,248,252,1)",
+            # A single goal made for a very sparse-looking chart at a fixed
+            # 55px/row height; a small minimum keeps it from looking empty.
+            height=max(160, 70 * len(goals_display)),
+            margin=dict(t=10, b=30, l=10, r=60),
             legend_title="Priority",
+            bargap=0.35,
         )
-        st.plotly_chart(fig_goals, use_container_width=True)
+        _apply_chart_theme(fig_goals)
+        st.plotly_chart(fig_goals, use_container_width=True, theme=None)
     else:
         st.info("No goals set yet. Add goals from the Roadmap page.")
 
@@ -374,11 +477,14 @@ def render_reports():
 
     # 3. Goal Funding (20 pts)
     if not goals_df.empty:
-        avg_prog = (goals_df["current_saved"] /
-                    goals_df["target_amount"]).clip(0, 1).mean() * 100
+        avg_prog = _safe_pct(
+            goals_df["current_saved"], goals_df["target_amount"]).clip(0, 100).mean()
         high_goals = goals_df[goals_df["priority"] == "high"]
-        high_funded = (high_goals["current_saved"] / high_goals["target_amount"]).clip(
-            0, 1).mean() * 100 if not high_goals.empty else avg_prog
+        high_funded = (
+            _safe_pct(high_goals["current_saved"],
+                      high_goals["target_amount"]).clip(0, 100).mean()
+            if not high_goals.empty else avg_prog
+        )
         if avg_prog >= 60 and high_funded >= 50:
             g_earned, g_status = 20, "perfect"
             g_action = "✅ Goals well-funded across the board!"
@@ -404,12 +510,19 @@ def render_reports():
         has_prop = "Property" in assets_df["category"].values
         invest_pct = assets_df[assets_df["category"] == "Investments"]["amount"].sum(
         ) / total_assets * 100 if total_assets > 0 else 0
+
+        missing_categories = [name for name, present in (
+            ("Cash", has_cash), ("Investments", has_invest), ("Property", has_prop)
+        ) if not present]
+
         if cats >= 3 and has_invest and invest_pct >= 20:
             dv_earned, dv_status = 20, "perfect"
             dv_action = "✅ Well-diversified portfolio across multiple asset classes!"
         elif cats >= 2 and has_invest:
             dv_earned, dv_status = 13, "good"
-            dv_action = f"📌 {cats} categories. Add Property/Real-estate or Gold to diversify further."
+            suggestion = " or ".join(
+                missing_categories) if missing_categories else "another asset class"
+            dv_action = f"📌 {cats} categories. Add {suggestion} to diversify further."
         elif cats >= 2:
             dv_earned, dv_status = 8, "fair"
             dv_action = "⚠️ Add investment assets (mutual funds, stocks, ETFs) to earn full pts."
@@ -441,8 +554,17 @@ def render_reports():
     # Total score
     score = sum(p[2] for p in pillars)
     max_score = sum(p[3] for p in pillars)  # = 100
-    score_color = "#10b981" if score >= 75 else "#f59e0b" if score >= 45 else "#ef4444"
-    score_label = "Excellent 🌟" if score >= 85 else "Good 👍" if score >= 65 else "Fair ⚡" if score >= 45 else "Needs Work 🔧"
+
+    # Score color/label bands are aligned on the same thresholds so a
+    # "Good" label is never shown next to an orange/red color and vice versa.
+    if score >= 85:
+        score_color, score_label = "#10b981", "Excellent 🌟"
+    elif score >= 65:
+        score_color, score_label = "#10b981", "Good 👍"
+    elif score >= 45:
+        score_color, score_label = "#f59e0b", "Fair ⚡"
+    else:
+        score_color, score_label = "#ef4444", "Needs Work 🔧"
 
     # ── Score display ──────────────────────────────────────────────────────
     sc1, sc2 = st.columns([1, 2])
@@ -450,25 +572,24 @@ def render_reports():
     with sc1:
         st.markdown(
             f"<div style='text-align:center;padding:1.8rem 1rem;border-radius:20px;"
-            f"border:2px solid {score_color};'>"
+            f"border:2px solid {score_color};background:linear-gradient(160deg,{score_color}14,transparent);'>"
             f"<div style='font-size:3.8rem;font-weight:800;color:{score_color};'>{score}</div>"
             f"<div style='font-size:0.78rem;color:#6b7280;text-transform:uppercase;"
-            f"letter-spacing:0.1em;margin-bottom:0.4rem;'>out of 100</div>"
+            f"letter-spacing:0.1em;margin-bottom:0.4rem;'>out of {max_score}</div>"
             f"<div style='font-size:1.05rem;font-weight:700;color:{score_color};'>{score_label}</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
         st.markdown("")
 
-        # Mini radar / bar chart of pillars
-        import plotly.graph_objects as _pgo
-        fig_radar = _pgo.Figure()
+        # Mini bar chart of pillars
+        fig_radar = go.Figure()
         pillar_names = [p[0] for p in pillars]
         pillar_earned = [p[2] for p in pillars]
         pillar_max = [p[3] for p in pillars]
-        pillar_pct = [e/m*100 for e, m in zip(pillar_earned, pillar_max)]
+        pillar_pct = [e / m * 100 for e, m in zip(pillar_earned, pillar_max)]
 
-        fig_radar.add_trace(_pgo.Bar(
+        fig_radar.add_trace(go.Bar(
             x=pillar_pct,
             y=pillar_names,
             orientation="h",
@@ -480,17 +601,17 @@ def render_reports():
             text=[f"{e}/{m}" for e, m in zip(pillar_earned, pillar_max)],
             textposition="inside",
             insidetextanchor="middle",
+            hovertemplate="%{y}: %{x:.0f}%<extra></extra>",
         ))
         fig_radar.update_layout(
             height=220,
             margin=dict(t=5, b=5, l=5, r=5),
             xaxis=dict(range=[0, 100], showticklabels=False, showgrid=False),
             yaxis=dict(showgrid=False),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
             showlegend=False,
         )
-        st.plotly_chart(fig_radar, use_container_width=True)
+        _apply_chart_theme(fig_radar, legend=False)
+        st.plotly_chart(fig_radar, use_container_width=True, theme=None)
 
     with sc2:
         st.markdown("#### 🗺️ Your Roadmap to 100")
@@ -529,7 +650,8 @@ def render_reports():
             st.success("🎉 Perfect score! You're a financial role model.")
         else:
             st.info(
-                f"💪 Fix **{missing} pillar{'s' if missing>1 else ''}** above to reach 100. You're {100-score} points away!")
+                f"💪 Fix **{missing} pillar{'s' if missing>1 else ''}** above to reach 100. "
+                f"You're {max(0, max_score - score)} points away!")
 
     # ── Quick Tips ─────────────────────────────────────────────────────────
     st.markdown("---")
@@ -579,9 +701,10 @@ def render_reports():
                 data=to_csv_bytes(assets_df),
                 file_name="assets.csv",
                 mime="text/csv",
+                use_container_width=True,
             )
         else:
-            st.button("⬇️ Assets CSV", disabled=True)
+            st.button("⬇️ Assets CSV", disabled=True, use_container_width=True)
 
     with col_e2:
         if not liabilities_df.empty:
@@ -590,9 +713,11 @@ def render_reports():
                 data=to_csv_bytes(liabilities_df),
                 file_name="liabilities.csv",
                 mime="text/csv",
+                use_container_width=True,
             )
         else:
-            st.button("⬇️ Liabilities CSV", disabled=True)
+            st.button("⬇️ Liabilities CSV", disabled=True,
+                      use_container_width=True)
 
     with col_e3:
         if not goals_df.empty:
@@ -601,9 +726,10 @@ def render_reports():
                 data=to_csv_bytes(goals_df),
                 file_name="goals.csv",
                 mime="text/csv",
+                use_container_width=True,
             )
         else:
-            st.button("⬇️ Goals CSV", disabled=True)
+            st.button("⬇️ Goals CSV", disabled=True, use_container_width=True)
 
     with col_e4:
         if not snapshots_df.empty:
@@ -612,6 +738,8 @@ def render_reports():
                 data=to_csv_bytes(snapshots_df),
                 file_name="net_worth_history.csv",
                 mime="text/csv",
+                use_container_width=True,
             )
         else:
-            st.button("⬇️ History CSV", disabled=True)
+            st.button("⬇️ History CSV", disabled=True,
+                      use_container_width=True)
