@@ -12,10 +12,53 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import date
 
+from modules.animations import page_enter
 from modules.database import add_goal, get_goals, delete_goal, update_goal, get_assets, get_liabilities
 
 MONTHS = ["January", "February", "March", "April", "May", "June",
           "July", "August", "September", "October", "November", "December"]
+
+
+# ── Adaptive chart theme ────────────────────────────────────────────────────
+# st.plotly_chart() applies Streamlit's own built-in chart theme by default,
+# which silently overrides a figure's own colors — including a transparent
+# background — no matter what's set on the figure. Every st.plotly_chart()
+# call below passes theme=None so the styling here actually takes effect,
+# and colors are pulled from the app's live theme (st.get_option) rather
+# than a hardcoded guess, so charts always match dark or light mode.
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert a '#rrggbb' (or '#rgb') color to an 'rgba(r,g,b,a)' string."""
+    hex_color = (hex_color or "#e6e6e6").lstrip("#")
+    if len(hex_color) == 3:
+        hex_color = "".join(c * 2 for c in hex_color)
+    try:
+        r, g, b = int(hex_color[0:2], 16), int(
+            hex_color[2:4], 16), int(hex_color[4:6], 16)
+    except ValueError:
+        r, g, b = 230, 230, 230
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _apply_chart_theme(fig, legend: bool = True):
+    """Style a plotly figure to match the app's live Streamlit theme."""
+    text_color = st.get_option("theme.textColor") or "#e6e6e6"
+    grid_color = _hex_to_rgba(text_color, 0.14)
+    axis_color = _hex_to_rgba(text_color, 0.65)
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=text_color),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=-0.3,
+            font=dict(color=text_color),
+        ) if legend else dict(),
+    )
+    fig.update_xaxes(gridcolor=grid_color, zerolinecolor=grid_color,
+                     linecolor=grid_color, color=axis_color)
+    fig.update_yaxes(gridcolor=grid_color, zerolinecolor=grid_color,
+                     linecolor=grid_color, color=axis_color)
+    return fig
 
 
 # ── Rule-based insight engine ─────────────────────────────────────────────────
@@ -28,15 +71,23 @@ def generate_goal_insight(goal: dict, monthly_contribution: float) -> str:
     name = goal["goal_name"]
     target = goal["target_amount"]
     saved = goal["current_saved"]
-    remaining = target - saved
+    remaining = max(target - saved, 0)
     target_year = int(goal["target_year"])
     priority = goal["priority"]
     target_month = int(goal.get("target_month", 12)
                        ) if goal.get("target_month") else 12
     today = date.today()
-    months_left = max((target_year - today.year) * 12 +
-                      (target_month - today.month), 1)
-    years_left = months_left / 12
+
+    # Raw months remaining can be zero or negative if the target date has
+    # already passed — that case is handled explicitly below. Previously
+    # this value was clamped to a minimum of 1 *before* the "has this
+    # passed?" check ran, so an overdue goal could never actually trigger
+    # the "target has passed" message — it always looked like there was
+    # ~1 month left instead, showing a misleadingly huge required monthly
+    # amount.
+    raw_months_left = (target_year - today.year) * \
+        12 + (target_month - today.month)
+    months_left = max(raw_months_left, 1)
 
     pct = (saved / target * 100) if target > 0 else 0
 
@@ -60,9 +111,14 @@ def generate_goal_insight(goal: dict, monthly_contribution: float) -> str:
         lines.append(
             f"Your **{name}** goal is just getting started ({pct:.1f}% funded).")
 
-    # Monthly requirement
-    if years_left > 0 and monthly_contribution > 0:
-        required_monthly = remaining / months_left if months_left > 0 else remaining
+    # Monthly requirement / overdue check
+    if raw_months_left <= 0:
+        lines.append(
+            f"⏰ This goal's target ({MONTHS[target_month-1]} {target_year}) has passed – "
+            f"consider updating the target date."
+        )
+    elif monthly_contribution > 0:
+        required_monthly = remaining / months_left
         if monthly_contribution >= required_monthly:
             lines.append(
                 f"✅ Your current monthly savings of ₹{monthly_contribution:,.0f} is sufficient "
@@ -74,9 +130,6 @@ def generate_goal_insight(goal: dict, monthly_contribution: float) -> str:
                 f"⚠️ You need **₹{required_monthly:,.0f}/month** but are saving ₹{monthly_contribution:,.0f}/month. "
                 f"Increase savings by ₹{shortfall:,.0f}/month to reach your {MONTHS[target_month-1]} {target_year} target."
             )
-    elif years_left <= 0:
-        lines.append(
-            f"⏰ This goal's target ({MONTHS[target_month-1]} {target_year}) has passed – consider updating it.")
 
     # Priority advice
     if priority == "high":
@@ -136,6 +189,7 @@ def build_milestones(goal: dict) -> list[dict]:
 # ── Render ────────────────────────────────────────────────────────────────────
 
 def render_roadmap():
+    page_enter("roadmap")
     st.markdown("# 🗺️ Financial Roadmap")
     st.markdown(
         "Set your goals, get AI-powered milestones and actionable advice.")
@@ -166,7 +220,7 @@ def render_roadmap():
             "Target Year", min_value=date.today().year, max_value=2075,
             value=date.today().year + 5, step=1,
         )
-        if st.button("🚀 Add Goal"):
+        if st.button("🚀 Add Goal", type="primary"):
             if goal_name.strip():
                 add_goal(goal_name.strip(), target_amt, current_saved, int(
                     target_year), priority, MONTHS.index(target_month)+1)  # type: ignore
@@ -191,8 +245,6 @@ def render_roadmap():
                        "medium": "#f59e0b", "low": "#10b981"}
 
     for _, g in goals_df.iterrows():
-        pct = min((g["current_saved"] / g["target_amount"] * 100),
-                  100) if g["target_amount"] > 0 else 0
         color = priority_colors.get(g["priority"], "#6b7280")
         fig_timeline.add_trace(go.Scatter(
             x=[today_year, g["target_year"]],
@@ -205,18 +257,22 @@ def render_roadmap():
                 "Now", f"{MONTHS[int(g.get('target_month',12))-1]} {int(g['target_year'])} — ₹{g['target_amount']:,.0f}"],
             textposition="top center",
             name=g["goal_name"],
+            hovertemplate="%{text}<extra></extra>",
         ))
 
     fig_timeline.update_layout(
         height=max(300, 80 * len(goals_df)),
         margin=dict(t=30, b=30, l=120, r=30),
-        xaxis=dict(title="Year", tickformat="%d"),
+        # Years are plain integers, not dates, so the axis needs a numeric
+        # tick format ("d") rather than a date-style one ("%d", which is a
+        # day-of-month format and doesn't apply here) — plus a fixed
+        # dtick=1 so Plotly can't pick a fractional-year tick like 2026.5.
+        xaxis=dict(title="Year", tickformat="d", dtick=1),
         yaxis=dict(title=""),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
     )
-    st.plotly_chart(fig_timeline, use_container_width=True)
+    _apply_chart_theme(fig_timeline, legend=False)
+    st.plotly_chart(fig_timeline, use_container_width=True, theme=None)
 
     # ── Progress overview chart ────────────────────────────────────────────
     st.markdown("### 📊 Progress Overview")
@@ -233,27 +289,30 @@ def render_roadmap():
         y=goals_df["goal_name"],
         x=goals_df["progress_pct"],
         orientation="h",
-        marker_color="#2563eb",
+        marker_color="#3b82f6",
+        marker=dict(cornerradius=6),
         text=[f"{p:.0f}%" for p in goals_df["progress_pct"]],
         textposition="inside",
+        hovertemplate="%{y}<br>Saved: %{x:.0f}%<extra></extra>",
     ))
     fig_prog.add_trace(go.Bar(
         name="Remaining",
         y=goals_df["goal_name"],
         x=goals_df["remaining_pct"],
         orientation="h",
-        marker_color="#e5e7eb",
+        marker_color="rgba(148,163,184,0.35)",
+        marker=dict(cornerradius=6),
+        hovertemplate="%{y}<br>Remaining: %{x:.0f}%<extra></extra>",
     ))
     fig_prog.update_layout(
         barmode="stack",
-        height=max(250, 60 * len(goals_df)),
+        bargap=0.35,
+        height=max(220, 70 * len(goals_df)),
         margin=dict(t=10, b=30, l=10, r=10),
         xaxis=dict(title="Progress (%)", range=[0, 100]),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.3),
     )
-    st.plotly_chart(fig_prog, use_container_width=True)
+    _apply_chart_theme(fig_prog)
+    st.plotly_chart(fig_prog, use_container_width=True, theme=None)
 
     # ── Per-goal cards ─────────────────────────────────────────────────────
     st.markdown("### 🎯 Goal Details & AI Insights")
@@ -296,33 +355,18 @@ def render_roadmap():
                                             step=1, key=f"eg_year_{rid}")
                 new_month = MONTHS.index(new_month_name) + 1
 
-                st.markdown("""
-                    <style>
-                    div[data-testid="stHorizontalBlock"] div:nth-child(1) .stButton > button {
-                        background: #16a34a !important; color: #fff !important;
-                        border: none !important; border-radius: 8px !important;
-                        font-weight: 700 !important; white-space: nowrap !important;
-                        width: 100% !important; padding: 0.5rem 0.8rem !important;
-                    }
-                    div[data-testid="stHorizontalBlock"] div:nth-child(2) .stButton > button {
-                        background: transparent !important; color: #ef4444 !important;
-                        border: 1.5px solid #ef4444 !important; border-radius: 8px !important;
-                        font-weight: 700 !important; white-space: nowrap !important;
-                        width: 100% !important; padding: 0.5rem 0.8rem !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-
                 bc1, bc2, _ = st.columns([1.2, 1.2, 3])
                 with bc1:
-                    if st.button("💾  Save", key=f"save_goal_{rid}", use_container_width=True):
+                    if st.button("💾  Save", key=f"save_goal_{rid}",
+                                 use_container_width=True, type="primary"):
                         update_goal(rid, new_name.strip(), new_target,
                                     new_saved, int(new_year), new_month, new_pri)
                         st.session_state[edit_key] = False
                         st.success(f"✅ Goal '{new_name.strip()}' updated!")
                         st.rerun()
                 with bc2:
-                    if st.button("✖  Cancel", key=f"cancel_goal_{rid}", use_container_width=True):
+                    if st.button("✖  Cancel", key=f"cancel_goal_{rid}",
+                                 use_container_width=True, type="secondary"):
                         st.session_state[edit_key] = False
                         st.rerun()
 
@@ -343,12 +387,21 @@ def render_roadmap():
 
                 # Milestones
                 milestones = build_milestones(g_dict)
+                st.markdown("<div style='margin-top:0.6rem;'></div>",
+                            unsafe_allow_html=True)
                 cols = st.columns(4)
                 for i, ms in enumerate(milestones):
-                    icon = "✅" if ms["achieved"] else "⬜"
+                    if ms["achieved"]:
+                        icon, tint = "✅", "#10b98122"
+                        border = "#10b981"
+                    else:
+                        icon, tint = "⬜", "transparent"
+                        border = "rgba(148,163,184,0.35)"
                     cols[i].markdown(
-                        f"<div style='text-align:center;font-size:0.8rem'>"
-                        f"{icon}<br><b>{ms['milestone']}</b><br>{ms['year']}</div>",
+                        f"<div style='text-align:center;font-size:0.8rem;padding:0.6rem 0.3rem;"
+                        f"border-radius:10px;border:1px solid {border};background:{tint};'>"
+                        f"<div style='font-size:1.1rem;'>{icon}</div>"
+                        f"<b>{ms['milestone']}</b><br>{ms['year']}</div>",
                         unsafe_allow_html=True,
                     )
 
@@ -366,6 +419,7 @@ def render_roadmap():
                         st.session_state[edit_key] = True
                         st.rerun()
                 with ab2:
-                    if st.button("🗑️  Delete", key=f"del_goal_{rid}", use_container_width=True):
+                    if st.button("🗑️  Delete", key=f"del_goal_{rid}",
+                                 use_container_width=True, type="secondary"):
                         delete_goal(rid)
                         st.rerun()
